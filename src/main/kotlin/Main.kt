@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Button
 import androidx.compose.material.ButtonDefaults
+import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.SnackbarDefaults.backgroundColor
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -187,12 +188,36 @@ fun previousMove(){
 }
 
 @Composable
-fun PgnWindowContent() {
+fun PgnWindowContent(onSave: (String) -> Unit) {
+    var pgnInput by remember { mutableStateOf("") }
+
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text("Paste your PGN data below:", color = Color.Black)
+        OutlinedTextField(
+            value = pgnInput,
+            onValueChange = {pgnInput = it},
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f), // Makes the textbox expand to fill vertical space
+            label = { Text("PGN Text") },
+            placeholder = { Text("1. e4 e5 2. Nf3 ...") }, //Phantom Text
+            singleLine = false // Allows multiple lines for long games
+        )
+        Button(
+            onClick = {
+                onSave(pgnInput)
+            },
+            colors = ButtonDefaults.buttonColors(
+                backgroundColor = Color(0xFF769656),
+                contentColor = Color.White),
+            shape = RoundedCornerShape(8.dp)
+        ){
+            Text("Save and Close")
+        }
+
     }
 }
 
@@ -200,13 +225,14 @@ fun main() = application {
     //Track to see if PGN is open
     var isPgnWindowOpen by remember { mutableStateOf(false) }
 
+
     //Main Window
     Window(
         onCloseRequest = ::exitApplication,
         title = "Chess Analyzer",
         state = rememberWindowState(width = 1000.dp, height = 800.dp)
     ) {
-        app(onUploadPgnClick = { isPgnWindowOpen = true })
+        app(onUploadPgnClick = { isPgnWindowOpen = true})
     }
 
     //Shows if PGN window is open
@@ -216,7 +242,12 @@ fun main() = application {
             title = "PGN Uploader",
             state = rememberWindowState(width = 400.dp, height = 300.dp)
         ) {
-            PgnWindowContent()
+            PgnWindowContent(onSave = {
+                rawText ->
+                val parser = DataParser(rawText)
+                println("Successfully loaded game by: ${parser.white}")
+                isPgnWindowOpen = false
+            })
         }
     }
 }
