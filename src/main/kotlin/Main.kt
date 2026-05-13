@@ -23,22 +23,12 @@ import androidx.compose.ui.window.rememberWindowState
 
 @Composable
 @Preview
-fun app(onUploadPgnClick: () -> Unit){
-    //Make the initial board.
-    var boardState by remember {
-        mutableStateOf(
-            arrayOf(
-                arrayOf("r", "n", "b", "q", "k", "b", "n", "r"),
-                arrayOf("p", "p", "p", "p", "p", "p", "p", "p"),
-                arrayOf("", "", "", "", "", "", "", ""),
-                arrayOf("", "", "", "", "", "", "", ""),
-                arrayOf("", "", "", "", "", "", "", ""),
-                arrayOf("", "", "", "", "", "", "", ""),
-                arrayOf("P", "P", "P", "P", "P", "P", "P", "P"),
-                arrayOf("R", "N", "B", "Q", "K", "B", "N", "R")
-            )
-        )
-    }
+fun app(
+    boardState: Array<Array<String>>, // Added this
+    onUploadPgnClick: () -> Unit,
+    nextMove: () -> Unit,
+    previousMove: () -> Unit,
+){
 
     Box(
         //Make the bos take up the whole ui
@@ -67,7 +57,7 @@ fun app(onUploadPgnClick: () -> Unit){
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Button(
-                            onClick = { previousMove() },
+                            onClick = previousMove,
                             colors = ButtonDefaults.buttonColors(
                                 backgroundColor = Color(0xFF769656),
                                 contentColor = Color.White
@@ -78,7 +68,7 @@ fun app(onUploadPgnClick: () -> Unit){
                         }
 
                         Button(
-                            onClick = { nextMove() },
+                            onClick = nextMove,
                             colors = ButtonDefaults.buttonColors(
                                 backgroundColor = Color(0xFF769656),
                                 contentColor = Color.White
@@ -225,6 +215,21 @@ fun main() = application {
     //Track to see if PGN is open
     var isPgnWindowOpen by remember { mutableStateOf(false) }
 
+    //Make the Initial Board
+    var boardState by remember {
+        mutableStateOf(
+            arrayOf(
+                arrayOf("r", "n", "b", "q", "k", "b", "n", "r"),
+                arrayOf("p", "p", "p", "p", "p", "p", "p", "p"),
+                arrayOf("", "", "", "", "", "", "", ""),
+                arrayOf("", "", "", "", "", "", "", ""),
+                arrayOf("", "", "", "", "", "", "", ""),
+                arrayOf("", "", "", "", "", "", "", ""),
+                arrayOf("P", "P", "P", "P", "P", "P", "P", "P"),
+                arrayOf("R", "N", "B", "Q", "K", "B", "N", "R")
+            )
+        )
+    }
 
     //Main Window
     Window(
@@ -232,7 +237,7 @@ fun main() = application {
         title = "Chess Analyzer",
         state = rememberWindowState(width = 1000.dp, height = 800.dp)
     ) {
-        app(onUploadPgnClick = { isPgnWindowOpen = true})
+        app(boardState = boardState, onUploadPgnClick = { isPgnWindowOpen = true }, nextMove = {})
     }
 
     //Shows if PGN window is open
@@ -242,10 +247,19 @@ fun main() = application {
             title = "PGN Uploader",
             state = rememberWindowState(width = 400.dp, height = 300.dp)
         ) {
+            //TODO: Add move tracking and display
             PgnWindowContent(onSave = {
                 rawText ->
                 val parser = DataParser(rawText)
-                println("Successfully loaded game by: ${parser.white}")
+                val allMoves = parser.getMoves()
+
+
+
+
+
+                var newBoard = boardState.map {it.copyOf()}.toTypedArray()
+
+
                 isPgnWindowOpen = false
             })
         }
