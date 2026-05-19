@@ -18,6 +18,8 @@ import androidx.compose.material.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.window.rememberWindowState
+import java.lang.Math.abs
+import java.lang.Integer.signum
 
 
 
@@ -99,7 +101,7 @@ fun app(
 fun ChessBoard(boardState: Array<Array<String>>) {
     // The Box stack allows us to put pieces ON TOP of the background
     Box(modifier = Modifier.size((64 * 8).dp)) {
-        // This Composable is "Stateless", so Compose skips it during recomposition
+        //This Composable is "Stateless", so Compose skips it during recomposition
         BoardBackground()
 
         // This Composable only reacts when boardState changes
@@ -169,12 +171,50 @@ fun getPieceSymbol(piece: String): String {
     }
 }
 
-fun nextMove(){
 
-}
+fun canReach(board: Array<Array<String>>, piece: String, startR: Int, startC: Int, targetR: Int, targetC: Int): Boolean {
+    //Change in x,y and piece type
+    val dx = abs(targetC - startC)
+    val dy = abs(targetR - startR)
+    val p = piece.uppercase()
 
-fun previousMove(){
+    //--Knight-- L shape
+    if (p == "N") {
+        return (dx == 2 && dy == 1) || (dx == 1 && dy == 2)
+    }
 
+    //--King-- One square
+    if (p == "K") {
+        return dx <= 1 && dy <= 1
+    }
+
+    //--Rook, Bishop, Queen--
+    if (p == "B" || p == "R" || p == "Q") {
+        val isDiagonal = dx == dy
+        val isStraight = dx == 0 || dy == 0
+
+        //Piece cant move if Bishop isnt diagonal, Rook isnt straight, queen isnt either of the attributes
+        if (p == "B" && !isDiagonal) return false
+        if (p == "R" && !isStraight) return false
+        if (p == "Q" && !isDiagonal && !isStraight) return false
+
+        val stepX = signum(targetC - startC)
+        val stepY = signum(targetR - startR)
+
+        var currR = startR + stepY
+        var currC = startC + stepX
+
+        //Step through the squares between start and target
+        while (currR != targetR || currC != targetC) {
+            if (board[currR][currC].isNotEmpty()) {
+                return false //path is blocked by a piece
+            }
+            currR += stepY
+            currC += stepX
+        }
+        return true
+    }
+    return false
 }
 
 @Composable
@@ -216,7 +256,7 @@ fun main() = application {
     var isPgnWindowOpen by remember { mutableStateOf(false) }
 
     //Make the Initial Board
-    var boardState by remember {
+    var startingBoard by remember {
         mutableStateOf(
             arrayOf(
                 arrayOf("r", "n", "b", "q", "k", "b", "n", "r"),
@@ -231,13 +271,132 @@ fun main() = application {
         )
     }
 
+    var boardHistory by remember { mutableStateOf(listOf(startingBoard)) }
+    var currentMoveIndex by remember { mutableStateOf(0) }
+    var boardState by remember {mutableStateOf(startingBoard)}
     //Main Window
     Window(
         onCloseRequest = ::exitApplication,
         title = "Chess Analyzer",
         state = rememberWindowState(width = 1000.dp, height = 800.dp)
     ) {
-        app(boardState = boardState, onUploadPgnClick = { isPgnWindowOpen = true }, nextMove = {})
+        app(boardState = boardState,
+            onUploadPgnClick = { isPgnWindowOpen = true },
+            nextMove = {
+                if (currentMoveIndex < boardHistory.size - 1) {
+                    currentMoveIndex++
+                    boardState = boardHistory[currentMoveIndex]
+                }
+            },
+            previousMove = {
+                if (currentMoveIndex > 0) {
+                    currentMoveIndex--
+                    boardState = boardHistory[currentMoveIndex]
+                }
+            })
+    }
+
+    // Helper function to update the board based on a PGN string
+    fun applyMove(currentBoard: Array<Array<String>>, moveStr: String, isWhite: Boolean): Array<Array<String>> {
+        val nextBoard = currentBoard.map { it.copyOf() }.toTypedArray()
+        val parser = MoveParser(moveStr)
+
+        val targetX = parser.getX()
+        val targetY = parser.getY()
+        val initialX = parser.getCurrentCol() // Assuming MoveParser grabs the file for captures (e.g., 'e' from exd5)
+        val initialY = parser.getCurrentRow()
+
+        val pieceType = if (isWhite) {
+            parser.piece.uppercaseChar().toString()
+        } else {
+            parser.piece.lowercaseChar().toString()
+        }
+
+        //--Castling Logic--
+        if (parser.isKingsideCastle) {
+            if (isWhite) {
+                nextBoard[7][4] = ""
+                nextBoard[7][6] = "K"
+                nextBoard[7][7] = ""
+                nextBoard[7][5] = "R"
+            } else {
+                nextBoard[0][4] = ""
+                nextBoard[0][6] = "k"
+                nextBoard[0][7] = ""
+                nextBoard[0][5] = "r"
+            }
+            return nextBoard
+        } else if (parser.isQueensideCastle) {
+            if (isWhite) {
+                nextBoard[7][4] = ""
+                nextBoard[7][2] = "K"
+                nextBoard[7][0] = ""
+                nextBoard[7][3] = "R"
+            } else {
+                nextBoard[0][4] = ""
+                nextBoard[0][2] = "k"
+                nextBoard[0][0] = ""
+                nextBoard[0][3] = "r"
+            }
+            return nextBoard
+        }
+
+        //--Pawn Logic--
+        if (parser.piece.uppercaseChar() == 'P') {
+            val searchCol = if (initialX != -1) initialX else targetX
+            val direction = if (isWhite) -1 else 1
+
+            for (r in 0..7) {
+                if (currentBoard[r][searchCol] == pieceType) {
+                    val isOneStep = (r + direction == targetY) && (searchCol == targetX)
+                    val isTwoStep = (r + (2 * direction) == targetY) && (searchCol == targetX) && ((isWhite && r == 6) || (!isWhite && r == 1))
+                    val isCapture = (r + direction == targetY) && (searchCol != targetX)
+
+                    if (isOneStep || isTwoStep || isCapture) {
+                        nextBoard[r][searchCol] = ""
+
+                        //--En Passant--
+                        if (isCapture && currentBoard[targetY][targetX] == "") {
+                            nextBoard[r][targetX] = ""
+                        }
+
+                        //--Promotion--
+                        if (parser.promotion != ' ') {
+                            val promotedPiece = if (isWhite) {
+                                parser.promotion.uppercaseChar().toString()
+                            } else {
+                                parser.promotion.lowercaseChar().toString()
+                            }
+                            nextBoard[targetY][targetX] = promotedPiece
+                        } else {
+                            // Normal pawn move
+                            nextBoard[targetY][targetX] = pieceType
+                        }
+                        return nextBoard
+                    }
+                }
+            }
+        }
+        //--Piece Logic--
+        else {
+            for (r in 0..7) {
+                for (c in 0..7) {
+                    val pieceMatches = currentBoard[r][c] == pieceType
+                    val colMatches = (initialX == -1 || initialX == c)
+                    val rowMatches = (initialY == -1 || initialY == r)
+
+                    //Can the current piece see the position
+                    val canPhysicallyReach = canReach(currentBoard, pieceType, r, c, targetY, targetX)
+
+                    if (pieceMatches && colMatches && rowMatches && canPhysicallyReach) {
+                        nextBoard[r][c] = ""
+                        nextBoard[targetY][targetX] = pieceType
+                        return nextBoard
+                    }
+                }
+            }
+        }
+        return nextBoard
     }
 
     //Shows if PGN window is open
@@ -248,18 +407,31 @@ fun main() = application {
             state = rememberWindowState(width = 400.dp, height = 300.dp)
         ) {
             //TODO: Add move tracking and display
-            PgnWindowContent(onSave = {
-                rawText ->
+            PgnWindowContent(onSave = { rawText ->
                 val parser = DataParser(rawText)
-                val allMoves = parser.getMoves()
+                val allMoves = parser.moves
 
+                val newHistory = mutableListOf(startingBoard)
+                var tempBoard = startingBoard
 
+                // Loop through the move pairs
+                for (movePair in allMoves) {
+                    // Apply White's move
+                    if (movePair[0].isNotEmpty()) {
+                        tempBoard = applyMove(tempBoard, movePair[0], true)
+                        newHistory.add(tempBoard)
+                    }
+                    // Apply Black's move
+                    if (movePair[1].isNotEmpty()) {
+                        tempBoard = applyMove(tempBoard, movePair[1], false)
+                        newHistory.add(tempBoard)
+                    }
+                }
 
-
-
-                var newBoard = boardState.map {it.copyOf()}.toTypedArray()
-
-
+                // Update the state
+                boardHistory = newHistory
+                currentMoveIndex = 0
+                boardState = boardHistory[0]
                 isPgnWindowOpen = false
             })
         }
