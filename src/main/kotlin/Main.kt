@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.window.rememberWindowState
 import java.lang.Math.abs
 import java.lang.Integer.signum
@@ -26,7 +27,10 @@ import java.lang.Integer.signum
 @Composable
 @Preview
 fun app(
-    boardState: Array<Array<String>>, // Added this
+    boardState: Array<Array<String>>,
+    player1: String,
+    player2: String,
+    pgnState: String,
     onUploadPgnClick: () -> Unit,
     nextMove: () -> Unit,
     previousMove: () -> Unit,
@@ -49,8 +53,22 @@ fun app(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    Text(
+                        text = player2,
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
                     ChessBoard(boardState)
-                    // Using a Row instead of a Box to put them side-by-side
+
+                    Text(
+                        text = player1,
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
                     Row(
                         modifier = Modifier
                             .width(300.dp) // Fixed width for the control bar
@@ -81,17 +99,29 @@ fun app(
                         }
                     }
                 }
-                Button(
-                    onClick = onUploadPgnClick,
-                    colors = ButtonDefaults.buttonColors(
-                        backgroundColor = Color(0xFF769656),
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(8.dp),
-                ){
-                    Text("Upload PGN")
-                }
 
+                Column (
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ){
+                    Text("Content: $pgnState",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Button(
+                        onClick = onUploadPgnClick,
+                        colors = ButtonDefaults.buttonColors(
+                            backgroundColor = Color(0xFF769656),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                    ){
+                        Text("Upload PGN")
+                    }
+
+                }
             }
     }
 
@@ -254,6 +284,9 @@ fun PgnWindowContent(onSave: (String) -> Unit) {
 fun main() = application {
     //Track to see if PGN is open
     var isPgnWindowOpen by remember { mutableStateOf(false) }
+    var player1 by remember { mutableStateOf("White Player: ?") }
+    var player2 by remember { mutableStateOf("Black Player: ?") }
+    var pgnState by remember { mutableStateOf("Empty") }
 
     //Make the Initial Board
     var startingBoard by remember {
@@ -281,6 +314,9 @@ fun main() = application {
         state = rememberWindowState(width = 1000.dp, height = 800.dp)
     ) {
         app(boardState = boardState,
+            player1 = player1,
+            player2 = player2,
+            pgnState = pgnState,
             onUploadPgnClick = { isPgnWindowOpen = true },
             nextMove = {
                 if (currentMoveIndex < boardHistory.size - 1) {
@@ -428,6 +464,9 @@ fun main() = application {
                     }
                 }
 
+                player1 = "${parser.white} (${parser.whiteElo})"
+                player2 = "${parser.black} (${parser.blackElo})"
+                pgnState = "Filled"
                 // Update the state
                 boardHistory = newHistory
                 currentMoveIndex = 0
