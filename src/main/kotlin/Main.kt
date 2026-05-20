@@ -288,6 +288,37 @@ fun main() = application {
     var player2 by remember { mutableStateOf("Black Player: ?") }
     var pgnState by remember { mutableStateOf("Empty") }
 
+    //TODO: Make a button to let the person change the number of next best moves
+    var numberOfDesiredMoves = 3
+
+    //TODO: Put the moves into a string up to that moment
+    var allMoves by remember { mutableStateOf<Array<Array<String>>>(emptyArray()) }
+    var moveString by remember { mutableStateOf("") }
+    var isWhite = true
+    var moveCounter = 0
+
+
+//    //Make stockfish EXE
+//    val stockfish = StockFishEngine("C:\\Users\\maste\\IdeaProjects\\StockFishUI\\stockfish_x86-64-avx512.exe")
+//
+//    if (stockfish.startEngine()) {
+//        //Asks for top 3
+//        val topMoves = stockfish.getTopMoves(moveString, 2000, numberOfDesiredMoves)
+//
+//        for ((index, engineMove) in topMoves.withIndex()) {
+//            val evalText = if (engineMove.isMate) {
+//                "Mate in ${engineMove.mateIn}"
+//            } else {
+//                // Convert centipawns to standard pawn value (e.g., 35 -> 0.35)
+//                String.format("%.2f", engineMove.centipawns / 100.0)
+//            }
+//
+//            println("Rank ${index + 1}: Play ${engineMove.move} (Eval: $evalText)")
+//        }
+//
+//          stockfish.stopEngine()
+//    }
+
     //Make the Initial Board
     var startingBoard by remember {
         mutableStateOf(
@@ -322,12 +353,32 @@ fun main() = application {
                 if (currentMoveIndex < boardHistory.size - 1) {
                     currentMoveIndex++
                     boardState = boardHistory[currentMoveIndex]
+                    if (moveCounter <= allMoves.size - 1){
+                        moveString += if (isWhite) {
+                            allMoves[moveCounter][0] + " "
+                        } else {
+                            allMoves[moveCounter][1] + " "
+                        }
+                        isWhite = !isWhite
+                        if (isWhite){
+                            moveCounter++
+                        }
+                    }
+                    println(moveString)
                 }
             },
             previousMove = {
                 if (currentMoveIndex > 0) {
                     currentMoveIndex--
                     boardState = boardHistory[currentMoveIndex]
+                    if (moveCounter >= 0){
+                        moveString = moveString.substring(0, moveString.length-5)
+                        isWhite = !isWhite
+                        if (!isWhite){
+                            moveCounter--
+                        }
+                    }
+                    println(moveString)
                 }
             })
     }
@@ -337,10 +388,10 @@ fun main() = application {
         val nextBoard = currentBoard.map { it.copyOf() }.toTypedArray()
         val parser = MoveParser(moveStr)
 
-        val targetX = parser.getX()
-        val targetY = parser.getY()
-        val initialX = parser.getCurrentCol() // Assuming MoveParser grabs the file for captures (e.g., 'e' from exd5)
-        val initialY = parser.getCurrentRow()
+        val targetX = parser.x
+        val targetY = parser.y
+        val initialX = parser.currentCol // Assuming MoveParser grabs the file for captures (e.g., 'e' from exd5)
+        val initialY = parser.currentRow
 
         val pieceType = if (isWhite) {
             parser.piece.uppercaseChar().toString()
@@ -442,10 +493,9 @@ fun main() = application {
             title = "PGN Uploader",
             state = rememberWindowState(width = 400.dp, height = 300.dp)
         ) {
-            //TODO: Add move tracking and display
             PgnWindowContent(onSave = { rawText ->
                 val parser = DataParser(rawText)
-                val allMoves = parser.moves
+                allMoves = parser.moves
 
                 val newHistory = mutableListOf(startingBoard)
                 var tempBoard = startingBoard
