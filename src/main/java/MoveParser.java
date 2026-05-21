@@ -5,7 +5,7 @@ public class MoveParser {
      * @Author: Liam Guillemette
      */
 
-    private char piece;
+    private final char piece;
     private char promotedTo = ' ';
     private int currentCol = -1; // Default to -1 (unknown)
     private int currentRow = -1; // Default to -1 (unknown)

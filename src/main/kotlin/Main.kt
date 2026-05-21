@@ -291,10 +291,9 @@ fun main() = application {
     //TODO: Make a button to let the person change the number of next best moves
     var numberOfDesiredMoves = 3
 
-    //TODO: Put the moves into a string up to that moment
-    var allMoves by remember { mutableStateOf<Array<Array<String>>>(emptyArray()) }
-    var moveString by remember { mutableStateOf("") }
-    var isWhite = true
+    //TODO: Create a string with all the current moves
+    var stockfishMoves by remember { mutableStateOf("") }
+    var moveList by remember { mutableStateOf(emptyList<String>())}
     var moveCounter = 0
 
 
@@ -353,44 +352,42 @@ fun main() = application {
                 if (currentMoveIndex < boardHistory.size - 1) {
                     currentMoveIndex++
                     boardState = boardHistory[currentMoveIndex]
-                    if (moveCounter <= allMoves.size - 1){
-                        moveString += if (isWhite) {
-                            allMoves[moveCounter][0] + " "
-                        } else {
-                            allMoves[moveCounter][1] + " "
-                        }
-                        isWhite = !isWhite
-                        if (isWhite){
-                            moveCounter++
-                        }
+                    if (moveCounter < moveList.size){
+                        stockfishMoves += moveList[moveCounter] + " "
+                        moveCounter++
                     }
-                    println(moveString)
+                    println(stockfishMoves)
                 }
             },
             previousMove = {
                 if (currentMoveIndex > 0) {
                     currentMoveIndex--
                     boardState = boardHistory[currentMoveIndex]
-                    if (moveCounter >= 0){
-                        moveString = moveString.substring(0, moveString.length-5)
-                        isWhite = !isWhite
-                        if (!isWhite){
-                            moveCounter--
-                        }
+                    if (moveCounter > 0){
+                        stockfishMoves =stockfishMoves.substring(0,stockfishMoves.length - moveList[moveCounter].length - 1)
+                        moveCounter--
                     }
-                    println(moveString)
+                    println(stockfishMoves)
+
                 }
             })
     }
 
+    //Helper function to change the PGN notation to UCI
+    fun toUciSquare(row: Int, col: Int): String {
+        val file = ('a' + col).toString()
+        val rank = (8 - row).toString()
+        return file + rank
+    }
+
     // Helper function to update the board based on a PGN string
-    fun applyMove(currentBoard: Array<Array<String>>, moveStr: String, isWhite: Boolean): Array<Array<String>> {
+    fun applyMove(currentBoard: Array<Array<String>>, moveStr: String, isWhite: Boolean): Pair<Array<Array<String>>, String> {
         val nextBoard = currentBoard.map { it.copyOf() }.toTypedArray()
         val parser = MoveParser(moveStr)
 
         val targetX = parser.x
         val targetY = parser.y
-        val initialX = parser.currentCol // Assuming MoveParser grabs the file for captures (e.g., 'e' from exd5)
+        val initialX = parser.currentCol
         val initialY = parser.currentRow
 
         val pieceType = if (isWhite) {
@@ -401,31 +398,21 @@ fun main() = application {
 
         //--Castling Logic--
         if (parser.isKingsideCastle) {
+            val uci = if(isWhite) "e1g1" else "e8g8"
             if (isWhite) {
-                nextBoard[7][4] = ""
-                nextBoard[7][6] = "K"
-                nextBoard[7][7] = ""
-                nextBoard[7][5] = "R"
+                nextBoard[7][4] = ""; nextBoard[7][6] = "K"; nextBoard[7][7] = ""; nextBoard[7][5] = "R"
             } else {
-                nextBoard[0][4] = ""
-                nextBoard[0][6] = "k"
-                nextBoard[0][7] = ""
-                nextBoard[0][5] = "r"
+                nextBoard[0][4] = ""; nextBoard[0][6] = "k"; nextBoard[0][7] = ""; nextBoard[0][5] = "r"
             }
-            return nextBoard
+            return Pair(nextBoard, uci)
         } else if (parser.isQueensideCastle) {
+            val uci = if (isWhite) "e1c1" else "e8c8"
             if (isWhite) {
-                nextBoard[7][4] = ""
-                nextBoard[7][2] = "K"
-                nextBoard[7][0] = ""
-                nextBoard[7][3] = "R"
+                nextBoard[7][4] = ""; nextBoard[7][2] = "K"; nextBoard[7][0] = ""; nextBoard[7][3] = "R"
             } else {
-                nextBoard[0][4] = ""
-                nextBoard[0][2] = "k"
-                nextBoard[0][0] = ""
-                nextBoard[0][3] = "r"
+                nextBoard[0][4] = ""; nextBoard[0][2] = "k"; nextBoard[0][0] = ""; nextBoard[0][3] = "r"
             }
-            return nextBoard
+            return Pair(nextBoard, uci)
         }
 
         //--Pawn Logic--
@@ -442,12 +429,18 @@ fun main() = application {
                     if (isOneStep || isTwoStep || isCapture) {
                         nextBoard[r][searchCol] = ""
 
+                        // Generate base UCI string (e.g., "e2e4")
+                        val startSquare = toUciSquare(r, searchCol)
+                        val endSquare = toUciSquare(targetY, targetX)
+                        var uciMove = startSquare + endSquare
+
                         //--En Passant--
                         if (isCapture && currentBoard[targetY][targetX] == "") {
                             nextBoard[r][targetX] = ""
                         }
 
                         //--Promotion--
+                        // Note: ensure your parser variable matches. It may be 'promotedTo' instead of 'promotion'
                         if (parser.promotion != ' ') {
                             val promotedPiece = if (isWhite) {
                                 parser.promotion.uppercaseChar().toString()
@@ -455,11 +448,14 @@ fun main() = application {
                                 parser.promotion.lowercaseChar().toString()
                             }
                             nextBoard[targetY][targetX] = promotedPiece
+                            // UCI requires the lowercase letter for promotions (e.g., "e7e8q")
+                            uciMove += parser.promotion.lowercaseChar()
                         } else {
                             // Normal pawn move
                             nextBoard[targetY][targetX] = pieceType
                         }
-                        return nextBoard
+
+                        return Pair(nextBoard, uciMove)
                     }
                 }
             }
@@ -472,18 +468,26 @@ fun main() = application {
                     val colMatches = (initialX == -1 || initialX == c)
                     val rowMatches = (initialY == -1 || initialY == r)
 
-                    //Can the current piece see the position
+                    // Can the current piece see the position
                     val canPhysicallyReach = canReach(currentBoard, pieceType, r, c, targetY, targetX)
 
                     if (pieceMatches && colMatches && rowMatches && canPhysicallyReach) {
                         nextBoard[r][c] = ""
                         nextBoard[targetY][targetX] = pieceType
-                        return nextBoard
+
+                        // Generate base UCI string for pieces
+                        val startSquare = toUciSquare(r, c)
+                        val endSquare = toUciSquare(targetY, targetX)
+                        val uciMove = startSquare + endSquare
+
+                        return Pair(nextBoard, uciMove)
                     }
                 }
             }
         }
-        return nextBoard
+
+        // Fallback if no valid move was found (prevents compiler errors)
+        return Pair(nextBoard, "")
     }
 
     //Shows if PGN window is open
@@ -495,29 +499,37 @@ fun main() = application {
         ) {
             PgnWindowContent(onSave = { rawText ->
                 val parser = DataParser(rawText)
-                allMoves = parser.moves
+                val allMoves = parser.moves
 
                 val newHistory = mutableListOf(startingBoard)
+                val uciMoves = mutableListOf<String>()
                 var tempBoard = startingBoard
 
-                // Loop through the move pairs
                 for (movePair in allMoves) {
                     // Apply White's move
                     if (movePair[0].isNotEmpty()) {
-                        tempBoard = applyMove(tempBoard, movePair[0], true)
+                        val result = applyMove(tempBoard, movePair[0], true)
+                        tempBoard = result.first      // Grab the board
+                        uciMoves.add(result.second)   // Grab the "e2e4" string
                         newHistory.add(tempBoard)
+
                     }
+
                     // Apply Black's move
-                    if (movePair[1].isNotEmpty()) {
-                        tempBoard = applyMove(tempBoard, movePair[1], false)
+                    if (movePair.size > 1 && movePair[1].isNotEmpty()) {
+                        val result = applyMove(tempBoard, movePair[1], false)
+                        tempBoard = result.first
+                        uciMoves.add(result.second)
                         newHistory.add(tempBoard)
                     }
                 }
 
+                //Save to your Compose state
+                moveList = uciMoves
                 player1 = "${parser.white} (${parser.whiteElo})"
                 player2 = "${parser.black} (${parser.blackElo})"
                 pgnState = "Filled"
-                // Update the state
+
                 boardHistory = newHistory
                 currentMoveIndex = 0
                 boardState = boardHistory[0]
