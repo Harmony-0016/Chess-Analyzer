@@ -16,9 +16,12 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.Text
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.window.rememberWindowState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.lang.Math.abs
 import java.lang.Integer.signum
 
@@ -31,6 +34,7 @@ fun app(
     player1: String,
     player2: String,
     pgnState: String,
+    recomendedMoves: String,
     onUploadPgnClick: () -> Unit,
     nextMove: () -> Unit,
     previousMove: () -> Unit,
@@ -119,6 +123,22 @@ fun app(
                         shape = RoundedCornerShape(8.dp),
                     ){
                         Text("Upload PGN")
+                    }
+                    //Box with the stockfish recommendations
+                    Box (
+                        modifier = Modifier
+                            .width(300.dp)
+                            .height(345.dp)
+                            .background(color = Color(0xFF769656), shape = RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(16.dp))
+                            .padding(16.dp),
+                    ) {
+                        Text(
+                            text = recomendedMoves,
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
 
                 }
@@ -291,32 +311,21 @@ fun main() = application {
     //TODO: Make a button to let the person change the number of next best moves
     var numberOfDesiredMoves = 3
 
-    //TODO: Create a string with all the current moves
     var stockfishMoves by remember { mutableStateOf("") }
     var moveList by remember { mutableStateOf(emptyList<String>())}
     var moveCounter = 0
 
+    //TODO: Make the interface with stockfish but do not interrupt processes with it.
+    val stockfish = remember {
+        val engine  = StockFishEngine("stockfish_x86-64-avx512.exe")
+        engine.startEngine()
+        engine
+    }
 
-//    //Make stockfish EXE
-//    val stockfish = StockFishEngine("C:\\Users\\maste\\IdeaProjects\\StockFishUI\\stockfish_x86-64-avx512.exe")
-//
-//    if (stockfish.startEngine()) {
-//        //Asks for top 3
-//        val topMoves = stockfish.getTopMoves(moveString, 2000, numberOfDesiredMoves)
-//
-//        for ((index, engineMove) in topMoves.withIndex()) {
-//            val evalText = if (engineMove.isMate) {
-//                "Mate in ${engineMove.mateIn}"
-//            } else {
-//                // Convert centipawns to standard pawn value (e.g., 35 -> 0.35)
-//                String.format("%.2f", engineMove.centipawns / 100.0)
-//            }
-//
-//            println("Rank ${index + 1}: Play ${engineMove.move} (Eval: $evalText)")
-//        }
-//
-//          stockfish.stopEngine()
-//    }
+    //Coroutine for background tasks
+    val coroutineScope = rememberCoroutineScope()
+    var engineOutputText by remember {mutableStateOf("")}
+
 
     //Make the Initial Board
     var startingBoard by remember {
@@ -339,7 +348,10 @@ fun main() = application {
     var boardState by remember {mutableStateOf(startingBoard)}
     //Main Window
     Window(
-        onCloseRequest = ::exitApplication,
+        onCloseRequest = {
+            stockfish.stopEngine()
+            exitApplication()
+        },
         title = "Chess Analyzer",
         state = rememberWindowState(width = 1000.dp, height = 800.dp)
     ) {
@@ -347,27 +359,49 @@ fun main() = application {
             player1 = player1,
             player2 = player2,
             pgnState = pgnState,
+            recomendedMoves = engineOutputText,
             onUploadPgnClick = { isPgnWindowOpen = true },
             nextMove = {
                 if (currentMoveIndex < boardHistory.size - 1) {
                     currentMoveIndex++
                     boardState = boardHistory[currentMoveIndex]
-                    if (moveCounter < moveList.size){
-                        stockfishMoves += moveList[moveCounter] + " "
-                        moveCounter++
+
+                    val currentStockfishMoves = moveList.take(currentMoveIndex).joinToString(" ")
+
+                    engineOutputText = "Calculating..."
+
+                    coroutineScope.launch(Dispatchers.IO) {
+                        val topMoves = stockfish.getTopMoves(currentStockfishMoves, 2000, numberOfDesiredMoves)
+
+                        var resultText = ""
+                        for((index, engineMove) in topMoves.withIndex()) {
+                            resultText += "Rank ${index + 1}: ${engineMove.move} \n"
+                        }
+
+                        engineOutputText = resultText
                     }
-                    println(stockfishMoves)
+
                 }
             },
             previousMove = {
                 if (currentMoveIndex > 0) {
                     currentMoveIndex--
                     boardState = boardHistory[currentMoveIndex]
-                    if (moveCounter > 0){
-                        stockfishMoves =stockfishMoves.substring(0,stockfishMoves.length - moveList[moveCounter].length - 1)
-                        moveCounter--
+
+                    val currentStockfishMoves = moveList.take(currentMoveIndex).joinToString(" ")
+
+                    engineOutputText = "Calculating..."
+
+                    coroutineScope.launch(Dispatchers.IO) {
+                        val topMoves = stockfish.getTopMoves(currentStockfishMoves, 2000, numberOfDesiredMoves)
+
+                        var resultText = ""
+                        for ((index, engineMove) in topMoves.withIndex()) {
+                            resultText += "Rank ${index + 1}: ${engineMove.move} \n"
+                        }
+
+                        engineOutputText = resultText
                     }
-                    println(stockfishMoves)
 
                 }
             })
