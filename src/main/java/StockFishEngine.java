@@ -22,9 +22,6 @@ public class StockFishEngine {
         this.PATH = path;
     }
 
-    /**
-     *
-     */
     public boolean startEngine(){
         try {
             ProcessBuilder pb = new ProcessBuilder(PATH);

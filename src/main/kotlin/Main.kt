@@ -35,6 +35,9 @@ fun app(
     player2: String,
     pgnState: String,
     recomendedMoves: String,
+    currentEval: Float,
+    isMate: Boolean,
+    mateIn: Int,
     onUploadPgnClick: () -> Unit,
     nextMove: () -> Unit,
     previousMove: () -> Unit,
@@ -53,6 +56,8 @@ fun app(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                EvaluationBar(eval = currentEval, isMate = isMate, mateIn = mateIn)
+
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -301,6 +306,70 @@ fun PgnWindowContent(onSave: (String) -> Unit) {
     }
 }
 
+@Composable
+fun EvaluationBar(eval: Float, isMate: Boolean, mateIn: Int) {
+    val clampLimit = 5f
+
+    val whitePercentage = when {
+        isMate && mateIn > 0 -> 1f
+        isMate && mateIn < 0 -> 0f
+        else -> {
+            val clampedEval = eval.coerceIn(-clampLimit, clampLimit)
+            (clampedEval + clampLimit) / (clampLimit * 2)
+        }
+    }
+
+    val evalText = when {
+        isMate -> "M${kotlin.math.abs(mateIn)}"
+        eval > 0 -> "+${String.format("%.1f", eval)}"
+        else -> String.format("%.1f", eval)
+    }
+
+    Box(
+        modifier = Modifier
+            .width(24.dp)
+            .height(400.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .border(1.dp, Color.Black, RoundedCornerShape(4.dp))
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f - whitePercentage + 0.001f)
+                    .background(Color(0xFF404040)),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                if (eval < 0 || (isMate && mateIn < 0)) {
+                    Text(
+                        text = evalText,
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+            
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(whitePercentage + 0.001f)
+                    .background(Color.White),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                if (eval >= 0 || (isMate && mateIn > 0)) {
+                    Text(
+                        text = evalText,
+                        color = Color.Black,
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
 fun main() = application {
     //Track to see if PGN is open
     var isPgnWindowOpen by remember { mutableStateOf(false) }
@@ -308,12 +377,15 @@ fun main() = application {
     var player2 by remember { mutableStateOf("Black Player: ?") }
     var pgnState by remember { mutableStateOf("Empty") }
 
+    // Add these next to your other state variables
+    var currentEval by remember { mutableStateOf(0f) }
+    var isMate by remember { mutableStateOf(false) }
+    var mateIn by remember { mutableStateOf(0) }
+
     //TODO: Make a button to let the person change the number of next best moves
     var numberOfDesiredMoves = 3
 
-    var stockfishMoves by remember { mutableStateOf("") }
     var moveList by remember { mutableStateOf(emptyList<String>())}
-    var moveCounter = 0
 
     //TODO: Make the interface with stockfish but do not interrupt processes with it.
     val stockfish = remember {
@@ -324,8 +396,9 @@ fun main() = application {
 
     //Coroutine for background tasks
     val coroutineScope = rememberCoroutineScope()
-    var engineOutputText by remember {mutableStateOf("")}
-
+    var engineOutputText by remember {mutableStateOf("To Start, press upload PGN. Navigate to your chess game. \n " +
+            "Press share and select the PGN option. The UI will update to the information given.\n" +
+            "Content will show empty until data has been process.")}
 
     //Make the Initial Board
     var startingBoard by remember {
@@ -360,6 +433,9 @@ fun main() = application {
             player2 = player2,
             pgnState = pgnState,
             recomendedMoves = engineOutputText,
+            currentEval = currentEval,
+            isMate = isMate,
+            mateIn = mateIn,
             onUploadPgnClick = { isPgnWindowOpen = true },
             nextMove = {
                 if (currentMoveIndex < boardHistory.size - 1) {
@@ -372,6 +448,13 @@ fun main() = application {
 
                     coroutineScope.launch(Dispatchers.IO) {
                         val topMoves = stockfish.getTopMoves(currentStockfishMoves, 2000, numberOfDesiredMoves)
+
+                        if (topMoves.isNotEmpty()) {
+                            val bestMove = topMoves[0]
+                            isMate = bestMove.isMate
+                            mateIn = bestMove.mateIn
+                            currentEval = bestMove.centipawns / 100f
+                        }
 
                         var resultText = ""
                         for((index, engineMove) in topMoves.withIndex()) {
@@ -394,6 +477,13 @@ fun main() = application {
 
                     coroutineScope.launch(Dispatchers.IO) {
                         val topMoves = stockfish.getTopMoves(currentStockfishMoves, 2000, numberOfDesiredMoves)
+
+                        if (topMoves.isNotEmpty()) {
+                            val bestMove = topMoves[0]
+                            isMate = bestMove.isMate
+                            mateIn = bestMove.mateIn
+                            currentEval = bestMove.centipawns / 100f
+                        }
 
                         var resultText = ""
                         for ((index, engineMove) in topMoves.withIndex()) {
