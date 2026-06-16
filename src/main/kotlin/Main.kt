@@ -225,8 +225,8 @@ fun getPieceSymbol(piece: String): String {
 }
 
 fun canReach(board: Array<Array<String>>, piece: String, startR: Int, startC: Int, targetR: Int, targetC: Int): Boolean {
-    val dx = abs(targetC - startC)
-    val dy = abs(targetR - startR)
+    val dx = kotlin.math.abs(targetC - startC)
+    val dy = kotlin.math.abs(targetR - startR)
     val p = piece.uppercase()
 
     if (p == "N") return (dx == 2 && dy == 1) || (dx == 1 && dy == 2)
@@ -431,7 +431,13 @@ fun main() = application {
             state = rememberWindowState(width = 400.dp, height = 300.dp)
         ) {
             PgnWindowContent(onSave = { rawText ->
-                val parser = DataParser(rawText)
+                val lines = rawText.lines()
+                val headers = lines.filter { it.trim().startsWith("[") }.joinToString("\n")
+                val movesText = lines.filter { !it.trim().startsWith("[") && it.isNotBlank() }.joinToString(" ")
+                val sanitizedText = "$headers\n\n$movesText"
+
+
+                val parser = DataParser(sanitizedText)
                 val allMoves = parser.moves
                 val newHistory = mutableListOf(startingBoard)
                 val uciMoves = mutableListOf<String>()

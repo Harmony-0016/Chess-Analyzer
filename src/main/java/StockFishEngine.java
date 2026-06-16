@@ -2,10 +2,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.security.PublicKey;
 
 public class StockFishEngine {
 
@@ -22,6 +19,10 @@ public class StockFishEngine {
         this.PATH = path;
     }
 
+    /**
+     * Starts the C++ program in the background.
+     * @return true if the engine was successfully launched
+     */
     public boolean startEngine(){
         try {
             ProcessBuilder pb = new ProcessBuilder(PATH);
@@ -45,109 +46,56 @@ public class StockFishEngine {
         }
     }
 
-    public void setMultiPv(int lines) {
-        sendCommand("setoption name MultiPV value " + lines);
-    }
-
+    /**
+     * @author Liam Guillemette
+     * @param command: the message that is sent to stockfish
+     * @prerequisite: Message must be formatted
+     */
     public void sendCommand(String command) {
         try {
             writer.write(command + "\n");
-            writer.flush(); // CRITICAL: Forces the text down the pipe
+            writer.flush();
         } catch (IOException e) {
             System.err.println("Error sending command: " + e.getMessage());
         }
     }
 
     /**
-     * Gets the top N moves from the engine.
-     * @param moves A space-separated string of moves (e.g., "e2e4 e7e5")
-     * @param waitTime Milliseconds to think
-     * @param numLines How many alternative moves to return
-     * @return A list of EngineMove objects, ranked from best to worst.
+     * Reads a single line of text from the engine stream.
+     * @author Liam Guillemette
      */
-    public List<EngineMove> getTopMoves(String moves, int waitTime, int numLines) {
-
-        //Use mpv -- Multi Principal Variation
-        sendCommand("setoption name MultiPV value " + numLines);
-
-        //Give it the starting moves, then give it the wait time
-        if (moves.isEmpty()) {
-            sendCommand("position startpos");
-        } else {
-            sendCommand("position startpos moves " + moves);
+    public String readLine() throws IOException {
+        if (processReader != null) {
+            return processReader.readLine();
         }
-        sendCommand("go movetime " + waitTime);
-
-        //Map to constantly overwrite older depths with newer depths
-        Map<Integer, EngineMove> latestMoves = new HashMap<>();
-
-        try {
-            String line;
-            while ((line = processReader.readLine()) != null) {
-
-                //If it's an info line containing multiple variations
-                if (line.startsWith("info") && line.contains("multipv")) {
-                    String[] tokens = line.split(" ");
-
-                    int multiPvId = -1;
-                    int cpScore = 0;
-                    boolean isMate = false;
-                    int mateIn = 0;
-                    String moveStr = "";
-
-                    //Loop through the tokens to find our data
-                    for (int i = 0; i < tokens.length; i++) {
-                        if (tokens[i].equals("multipv")) {
-                            multiPvId = Integer.parseInt(tokens[i + 1]);
-                        }
-                        else if (tokens[i].equals("score")) {
-                            if (tokens[i + 1].equals("cp")) {
-                                cpScore = Integer.parseInt(tokens[i + 2]);
-                            } else if (tokens[i + 1].equals("mate")) {
-                                isMate = true;
-                                mateIn = Integer.parseInt(tokens[i + 2]);
-                            }
-                        }
-                        else if (tokens[i].equals("pv")) {
-                            //Token after pv is the desired
-                            moveStr = tokens[i + 1];
-                            break;
-                        }
-                    }
-
-                    //Save or overwrite this ID in our map
-                    if (multiPvId != -1 && !moveStr.isEmpty()) {
-                        latestMoves.put(multiPvId, new EngineMove(moveStr, cpScore, isMate, mateIn));
-                    }
-                }
-                //Finish at bestmove
-                else if (line.startsWith("bestmove")) {
-                    break;
-                }
-            }
-        } catch (IOException e) {
-            System.err.println("Error reading from Stockfish: " + e.getMessage());
-        }
-
-        // Convert our Map into a clean, ordered List to send back to Kotlin
-        List<EngineMove> finalMoves = new ArrayList<>();
-        for (int i = 1; i <= numLines; i++) {
-            if (latestMoves.containsKey(i)) {
-                finalMoves.add(latestMoves.get(i));
-            }
-        }
-
-        return finalMoves;
+        return null;
     }
 
-    public void stopEngine() {
-        try {
+    /**
+     * Checks if there is text waiting in the pipe without blocking the thread
+     * @return true if text is waiting, false otherwise
+     */
+    public boolean isOutputAvailable() throws IOException {
+        return processReader != null && processReader.ready();
+    }
+
+    public void stopEngine(){
+        try{
             sendCommand("quit");
-            processReader.close();
-            writer.close();
-            engineProcess.destroy();
-        } catch (IOException e) {
-            e.printStackTrace();
+        } catch (Exception e){
+            //ignore if it fails
+        } finally {
+            try {
+                if (processReader != null) processReader.close();
+                if (writer != null) writer.close();
+            } catch (IOException e){
+                //leave it away
+            }
+
+            //Destroy the process
+            if (engineProcess != null){
+                engineProcess.destroy();
+            }
         }
     }
 }
