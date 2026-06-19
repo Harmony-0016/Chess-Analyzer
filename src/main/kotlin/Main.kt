@@ -20,6 +20,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.lang.Math.abs
 import java.lang.Integer.signum
@@ -261,6 +262,31 @@ fun toUciSquare(row: Int, col: Int): String {
     return file + rank
 }
 
+fun formatUciToHuman(uci: String, boardState: Array<Array<String>>): String {
+    if (uci.length < 4) return uci
+
+    if (uci == "e1g1" || uci == "e8g8") return "O-O (Kingside)"
+    if (uci == "e1c1" || uci == "e8c8") return "O-O-O (Queenside)"
+
+
+    val startFile = uci[0]
+    val startRank = uci[1].toString().toIntOrNull() ?: 8
+    val endSquare = uci.substring(2, 4)
+
+    val startCol = startFile - 'a'
+    val startRow = 8 - startRank
+
+    if (startRow !in 0..7 || startCol !in 0..7) return uci
+
+    val piece = boardState[startRow][startCol].uppercase()
+
+    return when (piece) {
+        "P" -> endSquare
+        ""  -> uci
+        else -> "$piece$endSquare"
+    }
+}
+
 fun applyMove(currentBoard: Array<Array<String>>, moveStr: String, isWhite: Boolean): Pair<Array<Array<String>>, String> {
     val nextBoard = currentBoard.map { it.copyOf() }.toTypedArray()
     val parser = MoveParser(moveStr)
@@ -367,26 +393,105 @@ fun main() = application {
 
     // --- CENTRALIZED ENGINE CALL ---
     fun triggerEngineEvaluation() {
+        //Grabs the current board position history
         val currentStockfishMoves = moveList.take(currentMoveIndex).joinToString(" ")
         engineOutputText = "Calculating..."
 
-        // Cancel old calculations if user clicks fast
+        //Cancl the current job if running
         calculationJob?.cancel()
 
-        calculationJob = coroutineScope.launch(Dispatchers.IO) {
-            val topMoves = stockfish.getTopMoves(currentStockfishMoves, 2000, numberOfDesiredMoves)
-            if (topMoves.isNotEmpty()) {
-                val bestMove = topMoves[0]
-                isMate = bestMove.isMate
-                mateIn = bestMove.mateIn
-                currentEval = bestMove.centipawns / 100f
+        calculationJob = coroutineScope.launch(Dispatchers.IO){
+            try {
+                val isBlackToMove = currentMoveIndex %2 != 0
+
+                //Stop the old plumber, flush the pipe
+                stockfish.sendCommand("stop")
+                kotlinx.coroutines.delay(50)
+
+                //Read and discard the text
+                while (stockfish.isOutputAvailable()){
+                    stockfish.readLine()
+                }
+
+                //Set the board and begin the calculations
+                val posCommand = if (currentStockfishMoves.isEmpty()) "position startpos" else "position startpos moves $currentStockfishMoves"
+                stockfish.sendCommand("setoption name MultiPV value $numberOfDesiredMoves")
+                stockfish.sendCommand(posCommand)
+
+                stockfish.sendCommand("go infinite")
+
+                //Map to hold the highest depth calculations for each rank
+                val latestMoves = mutableMapOf<Int, String>()
+
+                //Listen forever until it's canceled (no longer active)
+                while (isActive){
+                    val line = stockfish.readLine() ?: break
+
+                    //If bestmove is seen then the stop command was sent
+                    if (line.startsWith("bestmove")) break
+
+                    //Parse the info stream lines
+                    if (line.startsWith("info") && line.contains("multipv")){
+                        val tokens = line.split("\\s+".toRegex())
+
+                        var multiPvId = -1
+                        var cpScore = 0
+                        var isMateFound = false
+                        var mateInValue = 0
+                        var moveStr = ""
+
+                        for (i in tokens.indices) {
+                            if (tokens[i] == "multipv" && i + 1 < tokens.size) {
+                                multiPvId = tokens[i + 1].toIntOrNull() ?: -1
+                            }
+                            if (tokens[i] == "score" && i + 2 < tokens.size) {
+                                if (tokens[i + 1] == "cp") {
+                                    cpScore = tokens[i + 2].toIntOrNull() ?: 0
+                                    // Invert the score so White is always positive
+                                    if (isBlackToMove) cpScore = -cpScore
+                                }
+                                if (tokens[i + 1] == "mate") {
+                                    isMateFound = true
+                                    mateInValue = tokens[i + 2].toIntOrNull() ?: 0
+                                    if (isBlackToMove) mateInValue = -mateInValue
+                                }
+                            }
+                            if (tokens[i] == "pv" && i + 1 < tokens.size) {
+                                moveStr = tokens[i + 1]
+                                break
+                            }
+                        }
+
+                        // 7. UPDATE THE UI: Pass the parsed data to Compose state variables
+                        if (multiPvId != -1 && moveStr.isNotEmpty()) {
+                            latestMoves[multiPvId] = moveStr
+
+                            // Only update the main eval bar for the #1 best move
+                            if (multiPvId == 1) {
+                                isMate = isMateFound
+                                mateIn = mateInValue
+                                currentEval = cpScore / 100f
+                            }
+
+                            // Format the text box continuously
+                            var newText = ""
+                            for (i in 1..numberOfDesiredMoves) {
+                                if (latestMoves.containsKey(i)) {
+                                    val rawMove = latestMoves[i] ?: ""
+                                    // Run it through the human-readable translator!
+                                    val humanMove = formatUciToHuman(rawMove, boardState)
+                                    newText += "Rank $i: $humanMove\n"
+                                }
+                            }
+                            engineOutputText = newText
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Silently swallow IO exceptions if the pipe is severed during app shutdown
             }
-            var resultText = ""
-            for ((index, engineMove) in topMoves.withIndex()) {
-                resultText += "Rank ${index + 1}: ${engineMove.move} \n"
-            }
-            engineOutputText = resultText
         }
+
     }
 
     Window(
