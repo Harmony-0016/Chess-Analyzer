@@ -54,8 +54,10 @@ fun ChessApp(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            //Eval Bar
             EvaluationBar(eval = currentEval, isMate = isMate, mateIn = mateIn)
 
+            //The Left side
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -83,6 +85,7 @@ fun ChessApp(
                 }
             }
 
+            //The right side of the UI
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -110,7 +113,7 @@ fun ChessApp(
     }
 }
 
-// --- SUB-COMPOSABLES ---
+//Sub-composables
 @Composable
 fun ChessBoard(boardState: Array<Array<String>>) {
     Box(modifier = Modifier.size((64 * 8).dp)) {

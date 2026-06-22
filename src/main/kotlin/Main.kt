@@ -9,13 +9,13 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 fun main() = application {
-    // 1. App State
+    //App State
     var isPgnWindowOpen by remember { mutableStateOf(false) }
     var player1 by remember { mutableStateOf("White Player: ?") }
     var player2 by remember { mutableStateOf("Black Player: ?") }
     var pgnState by remember { mutableStateOf("Empty") }
 
-    // 2. Engine State
+    //Engine State
     var currentEval by remember { mutableStateOf(0f) }
     var isMate by remember { mutableStateOf(false) }
     var mateIn by remember { mutableStateOf(0) }
@@ -23,7 +23,7 @@ fun main() = application {
     val numberOfDesiredMoves = 3
     var moveList by remember { mutableStateOf(emptyList<String>()) }
 
-    // 3. Thread Management
+    //Thread Management
     val coroutineScope = rememberCoroutineScope()
     var calculationJob by remember { mutableStateOf<Job?>(null) } // Safety toggle to prevent lag!
 
@@ -33,7 +33,7 @@ fun main() = application {
         engine
     }
 
-    // 4. Board State
+    //Board State
     val startingBoard = arrayOf(
         arrayOf("r", "n", "b", "q", "k", "b", "n", "r"),
         arrayOf("p", "p", "p", "p", "p", "p", "p", "p"),
@@ -55,7 +55,7 @@ fun main() = application {
         val currentStockfishMoves = moveList.take(currentMoveIndex).joinToString(" ")
         engineOutputText = "Calculating..."
 
-        //Cancl the current job if running
+        //Cancel the current job if running
         calculationJob?.cancel()
 
         calculationJob = coroutineScope.launch(Dispatchers.IO){
@@ -136,7 +136,6 @@ fun main() = application {
                             for (i in 1..numberOfDesiredMoves) {
                                 if (latestMoves.containsKey(i)) {
                                     val rawMove = latestMoves[i] ?: ""
-                                    // Run it through the human-readable translator!
                                     val humanMove = formatUciToHuman(rawMove, boardState)
                                     newText += "Rank $i: $humanMove\n"
                                 }
@@ -146,7 +145,7 @@ fun main() = application {
                     }
                 }
             } catch (e: Exception) {
-                // Silently swallow IO exceptions if the pipe is severed during app shutdown
+                //Silently swallow IO exceptions if the pipe is severed during app shutdown
             }
         }
 

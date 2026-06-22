@@ -1,5 +1,9 @@
 import java.lang.Integer.signum
 
+/**
+ * Gets the piece symbol
+ * TODO: Change the symbol to an image for cleanliness
+ */
 fun getPieceSymbol(piece: String): String {
     return when (piece) {
         "K" -> "♔"; "Q" -> "♕"; "R" -> "♖"; "B" -> "♗"; "N" -> "♘"; "P" -> "♙"
@@ -8,14 +12,20 @@ fun getPieceSymbol(piece: String): String {
     }
 }
 
+/**
+ * Can a piece touch the desired end position. Is it in vision?
+ */
 fun canReach(board: Array<Array<String>>, piece: String, startR: Int, startC: Int, targetR: Int, targetC: Int): Boolean {
+    //Displacement calculations
     val dx = kotlin.math.abs(targetC - startC)
     val dy = kotlin.math.abs(targetR - startR)
     val p = piece.uppercase()
 
+    //If the piece is a night
     if (p == "N") return (dx == 2 && dy == 1) || (dx == 1 && dy == 2)
     if (p == "K") return dx <= 1 && dy <= 1
 
+    //If it's a bishop, rook or queen
     if (p == "B" || p == "R" || p == "Q") {
         val isDiagonal = dx == dy
         val isStraight = dx == 0 || dy == 0
@@ -39,12 +49,18 @@ fun canReach(board: Array<Array<String>>, piece: String, startR: Int, startC: In
     return false
 }
 
+/**
+ * Convert square to UCI
+ */
 fun toUciSquare(row: Int, col: Int): String {
     val file = ('a' + col).toString()
     val rank = (8 - row).toString()
     return file + rank
 }
 
+/**
+ * Convert UCI into Square
+ */
 fun formatUciToHuman(uci: String, boardState: Array<Array<String>>): String {
     if (uci.length < 4) return uci
 
@@ -70,6 +86,9 @@ fun formatUciToHuman(uci: String, boardState: Array<Array<String>>): String {
     }
 }
 
+/**
+ * Creates the next arrays for a given board
+ */
 fun applyMove(currentBoard: Array<Array<String>>, moveStr: String, isWhite: Boolean): Pair<Array<Array<String>>, String> {
     val nextBoard = currentBoard.map { it.copyOf() }.toTypedArray()
     val parser = MoveParser(moveStr)
