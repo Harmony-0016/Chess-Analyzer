@@ -1,4 +1,5 @@
 import androidx.compose.desktop.ui.tooling.preview.Preview
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -24,15 +25,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.*
 
 //UI
 @Composable
 @Preview
 fun ChessApp(
     boardState: Array<Array<String>>,
+    bestMoves: Map<Int, String>,
     player1: String,
     player2: String,
     pgnState: String,
@@ -63,7 +69,7 @@ fun ChessApp(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(text = player2, color = ChessLight, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                ChessBoard(boardState)
+                ChessBoard(boardState, bestMoves)
                 Text(text = player1, color = ChessLight, fontSize = 18.sp, fontWeight = FontWeight.Bold)
 
                 Row(
@@ -115,10 +121,11 @@ fun ChessApp(
 
 //Sub-composables
 @Composable
-fun ChessBoard(boardState: Array<Array<String>>) {
+fun ChessBoard(boardState: Array<Array<String>>, bestMoves: Map<Int,String>) {
     Box(modifier = Modifier.size((64 * 8).dp)) {
         BoardBackground()
         PieceOverlay(boardState)
+        ArrowOverlay(bestMoves)
     }
 }
 
@@ -130,6 +137,77 @@ fun BoardBackground() {
                 for (col in 0 until 8) {
                     val isDark = (row + col) % 2 != 0
                     Box(modifier = Modifier.size(64.dp).background(if (isDark) ChessGreen else ChessLight))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ArrowOverlay(bestMoves: Map<Int, String>) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val squareSize = size.width / 8f
+
+        for (rank in 3 downTo 1) {
+            val uci = bestMoves[rank] ?: continue
+
+            if (uci.length >= 4) {
+                // Determining coordinates (0-7 array indices)
+                val startCol = uci[0] - 'a'
+                val startRow = 8 - (uci[1].toString().toIntOrNull() ?: 8)
+                val endCol = uci[2] - 'a'
+                val endRow = 8 - (uci[3].toString().toIntOrNull() ?: 8)
+
+                // If they are all legal board bounds
+                if (startRow in 0..7 && startCol in 0..7 && endRow in 0..7 && endCol in 0..7) {
+
+                    // Calculate the absolute center of each square
+                    val startX = startCol * squareSize + (squareSize / 2f)
+                    val startY = startRow * squareSize + (squareSize / 2f)
+                    val endX = endCol * squareSize + (squareSize / 2f)
+                    val endY = endRow * squareSize + (squareSize / 2f)
+
+                    val arrowColor = when (rank) {
+                        1 -> Color(0x9964B5F6) // Light Blue
+                        2 -> Color(0x9981C784) // Light Green
+                        3 -> Color(0x99F06292) // Light Pink
+                        else -> Color.Transparent
+                    }
+
+                    // --- THE MATH FIX ---
+                    val angle = atan2(endY - startY, endX - startX)
+                    val arrowLength = 30f
+                    val arrowAngle = Math.PI / 6
+
+                    // Calculate exactly where the flat base of the triangle sits
+                    val pullBackDistance = (arrowLength * cos(arrowAngle)).toFloat()
+
+                    // Shorten the main line so it docks flush with the triangle's base
+                    val shaftEndX = endX - pullBackDistance * cos(angle).toFloat()
+                    val shaftEndY = endY - pullBackDistance * sin(angle).toFloat()
+
+                    // 1. Draw the shortened main arrow shaft
+                    drawLine(
+                        color = arrowColor,
+                        start = Offset(startX, startY),
+                        end = Offset(shaftEndX, shaftEndY), // Use the pulled-back coordinates here!
+                        strokeWidth = 14f
+                    )
+
+                    // 2. Draw the triangular arrowhead exactly at the destination tip
+                    val path = Path().apply {
+                        moveTo(endX, endY)
+                        lineTo(
+                            (endX - arrowLength * cos(angle - arrowAngle)).toFloat(),
+                            (endY - arrowLength * sin(angle - arrowAngle)).toFloat()
+                        )
+                        lineTo(
+                            (endX - arrowLength * cos(angle + arrowAngle)).toFloat(),
+                            (endY - arrowLength * sin(angle + arrowAngle)).toFloat()
+                        )
+                        close()
+                    }
+                    drawPath(path = path, color = arrowColor)
                 }
             }
         }

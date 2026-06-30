@@ -14,6 +14,7 @@ fun main() = application {
     var player1 by remember { mutableStateOf("White Player: ?") }
     var player2 by remember { mutableStateOf("Black Player: ?") }
     var pgnState by remember { mutableStateOf("Empty") }
+    val bestEngineMoves = remember { mutableStateMapOf<Int, String>()}
 
     //Engine State
     var currentEval by remember { mutableStateOf(0f) }
@@ -124,6 +125,9 @@ fun main() = application {
                         if (multiPvId != -1 && moveStr.isNotEmpty()) {
                             latestMoves[multiPvId] = moveStr
 
+                            bestEngineMoves.clear()
+                            bestEngineMoves.putAll(latestMoves)
+
                             //Update the eval par for the best move
                             if (multiPvId == 1) {
                                 isMate = isMateFound
@@ -140,6 +144,7 @@ fun main() = application {
                                     newText += "Rank $i: $humanMove\n"
                                 }
                             }
+
                             engineOutputText = newText
                         }
                     }
@@ -161,6 +166,7 @@ fun main() = application {
     ) {
         ChessApp(
             boardState = boardState,
+            bestMoves = bestEngineMoves,
             player1 = player1,
             player2 = player2,
             pgnState = pgnState,
